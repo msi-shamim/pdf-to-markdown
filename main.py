@@ -14,13 +14,22 @@ from typing import Optional
 
 import fitz  # PyMuPDF
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 
 app = FastAPI(
     title="PDF to Markdown Converter",
     description="Convert PDF documents to Markdown format with text and image extraction",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -190,30 +199,8 @@ def convert_pdf_to_markdown(
     return result
 
 
-@app.post("/convert", response_class=PlainTextResponse)
-async def convert_pdf_simple(
-    file: UploadFile = File(..., description="PDF file to convert")
-) -> str:
-    """
-    Convert a PDF file to Markdown (simple text response).
-
-    Returns only the markdown text without images.
-    Ideal for quick conversions of text-heavy documents.
-    """
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=400,
-            detail="Uploaded file must be a PDF"
-        )
-
-    pdf_content = await file.read()
-    result = convert_pdf_to_markdown(pdf_content, include_images=False)
-
-    return result["markdown"]
-
-
-@app.post("/convert/full", response_class=JSONResponse)
-async def convert_pdf_full(
+@app.post("/convert", response_class=JSONResponse)
+async def convert_pdf(
     file: UploadFile = File(..., description="PDF file to convert"),
     include_images: bool = Query(
         default=False,
@@ -225,7 +212,7 @@ async def convert_pdf_full(
     )
 ) -> dict:
     """
-    Convert a PDF file to Markdown with full options.
+    Convert a PDF file to Markdown.
 
     Returns JSON with markdown content and optionally extracted images.
     Use include_images=true to extract images separately.

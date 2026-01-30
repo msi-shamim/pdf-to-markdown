@@ -1,0 +1,16 @@
+services:
+  pdf-to-markdown:
+    build: .
+    container_name: pdf-to-markdown
+    ports:
+      - "8888:8888"
+    restart: unless-stopped
+
+  pdf-to-markdown-ui:
+    build: ./ui
+    container_name: pdf-to-markdown-ui
+    ports:
+      - "4325:4321"
+    restart: unless-stopped
+    depends_on:
+      - pdf-to-markdown

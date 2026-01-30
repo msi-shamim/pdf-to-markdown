@@ -1,0 +1,247 @@
+---
+
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width" />
+		<title>PDF to Markdown Converter</title>
+		<style>
+			* {
+				box-sizing: border-box;
+				margin: 0;
+				padding: 0;
+			}
+			body {
+				font-family: system-ui, -apple-system, sans-serif;
+				background: #0f172a;
+				color: #e2e8f0;
+				min-height: 100vh;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 2rem;
+			}
+			.container {
+				max-width: 500px;
+				width: 100%;
+			}
+			h1 {
+				text-align: center;
+				margin-bottom: 2rem;
+				font-size: 1.75rem;
+				color: #f8fafc;
+			}
+			.upload-area {
+				border: 2px dashed #475569;
+				border-radius: 12px;
+				padding: 3rem 2rem;
+				text-align: center;
+				cursor: pointer;
+				transition: all 0.2s;
+				background: #1e293b;
+			}
+			.upload-area:hover, .upload-area.dragover {
+				border-color: #3b82f6;
+				background: #1e3a5f;
+			}
+			.upload-area p {
+				color: #94a3b8;
+				margin-bottom: 1rem;
+			}
+			.upload-area .icon {
+				font-size: 3rem;
+				margin-bottom: 1rem;
+			}
+			input[type="file"] {
+				display: none;
+			}
+			.btn {
+				background: #3b82f6;
+				color: white;
+				border: none;
+				padding: 0.75rem 1.5rem;
+				border-radius: 8px;
+				font-size: 1rem;
+				cursor: pointer;
+				transition: background 0.2s;
+			}
+			.btn:hover {
+				background: #2563eb;
+			}
+			.btn:disabled {
+				background: #475569;
+				cursor: not-allowed;
+			}
+			.status {
+				margin-top: 1.5rem;
+				padding: 1rem;
+				border-radius: 8px;
+				text-align: center;
+				display: none;
+			}
+			.status.show {
+				display: block;
+			}
+			.status.loading {
+				background: #1e3a5f;
+				color: #60a5fa;
+			}
+			.status.success {
+				background: #14532d;
+				color: #4ade80;
+			}
+			.status.error {
+				background: #450a0a;
+				color: #f87171;
+			}
+			.file-name {
+				margin-top: 1rem;
+				font-size: 0.875rem;
+				color: #94a3b8;
+			}
+			.progress {
+				margin-top: 1rem;
+				font-size: 0.875rem;
+				color: #94a3b8;
+				text-align: center;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<h1>PDF to Markdown</h1>
+
+			<div class="upload-area" id="dropZone">
+				<div class="icon">📄</div>
+				<p>Drag & drop PDF files here or</p>
+				<button class="btn" id="selectBtn">Select Files</button>
+				<input type="file" id="fileInput" accept=".pdf" multiple />
+				<div class="file-name" id="fileName"></div>
+			</div>
+
+			<div class="status" id="status"></div>
+			<div class="progress" id="progress"></div>
+		</div>
+
+		<script>
+			import JSZip from 'jszip';
+
+			const dropZone = document.getElementById('dropZone');
+			const fileInput = document.getElementById('fileInput') as HTMLInputElement;
+			const selectBtn = document.getElementById('selectBtn');
+			const fileName = document.getElementById('fileName');
+			const status = document.getElementById('status');
+			const progress = document.getElementById('progress');
+
+			const API_URL = 'http://localhost:8888';
+
+			let downloadCounter = parseInt(localStorage.getItem('pdfDownloadCounter') || '0');
+
+			selectBtn?.addEventListener('click', () => fileInput?.click());
+
+			dropZone?.addEventListener('dragover', (e) => {
+				e.preventDefault();
+				dropZone.classList.add('dragover');
+			});
+
+			dropZone?.addEventListener('dragleave', () => {
+				dropZone.classList.remove('dragover');
+			});
+
+			dropZone?.addEventListener('drop', (e) => {
+				e.preventDefault();
+				dropZone.classList.remove('dragover');
+				const files = e.dataTransfer?.files;
+				if (files?.length) handleFiles(Array.from(files));
+			});
+
+			fileInput?.addEventListener('change', () => {
+				if (fileInput.files?.length) handleFiles(Array.from(fileInput.files));
+			});
+
+			async function handleFiles(files: File[]) {
+				const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+
+				if (pdfFiles.length === 0) {
+					showStatus('Please select PDF files', 'error');
+					return;
+				}
+
+				fileName!.textContent = `${pdfFiles.length} file(s) selected`;
+				showStatus('Converting...', 'loading');
+				progress!.textContent = '';
+
+				const zip = new JSZip();
+				let completed = 0;
+				let failed = 0;
+
+				for (const file of pdfFiles) {
+					try {
+						progress!.textContent = `Processing ${completed + 1}/${pdfFiles.length}: ${file.name}`;
+
+						const formData = new FormData();
+						formData.append('file', file);
+
+						const response = await fetch(`${API_URL}/convert?include_images=true&embed_images=true`, {
+							method: 'POST',
+							body: formData,
+						});
+
+						if (!response.ok) {
+							const error = await response.json();
+							throw new Error(error.detail || 'Conversion failed');
+						}
+
+						const data = await response.json();
+						const mdFileName = file.name.replace(/\.pdf$/i, '.md');
+						zip.file(mdFileName, data.markdown);
+						completed++;
+					} catch (err) {
+						console.error(`Failed to convert ${file.name}:`, err);
+						failed++;
+					}
+				}
+
+				if (completed > 0) {
+					downloadCounter++;
+					localStorage.setItem('pdfDownloadCounter', downloadCounter.toString());
+
+					const zipBlob = await zip.generateAsync({ type: 'blob' });
+					const zipFileName = `${downloadCounter}-pdf2md.zip`;
+
+					downloadFile(zipBlob, zipFileName);
+
+					let statusMsg = `Downloaded: ${zipFileName} (${completed} file(s))`;
+					if (failed > 0) statusMsg += ` - ${failed} failed`;
+
+					showStatus(statusMsg, 'success');
+				} else {
+					showStatus('All conversions failed', 'error');
+				}
+
+				progress!.textContent = '';
+				fileInput.value = '';
+				fileName!.textContent = '';
+			}
+
+			function downloadFile(blob: Blob, filename: string) {
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+			}
+
+			function showStatus(message: string, type: 'loading' | 'success' | 'error') {
+				status!.textContent = message;
+				status!.className = `status show ${type}`;
+			}
+		</script>
+	</body>
+</html>
