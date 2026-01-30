@@ -55,5 +55,5 @@ MIT License - see [LICENSE.md](LICENSE.md)
 
 ## Author
 
-GitHub: [@msishamim](https://github.com/msishamim)
+GitHub: [@msi-shamim](https://github.com/msi-shamim)
 Email: im.msishamim@gmail.com
